@@ -1,10 +1,11 @@
 import numpy as np
+import os
 
 
 def initParam():
-    w1 = np.random.randn(10, 784) * 0.01
-    b1 = np.zeros((10, 1))
-    w2 = np.random.randn(10, 10) * 0.01
+    w1 = np.random.randn(64, 784) * np.sqrt(2 / 784)
+    b1 = np.zeros((64, 1))
+    w2 = np.random.randn(10, 64) * np.sqrt(2 / 64)
     b2 = np.zeros((10, 1))
 
     return w1, b1, w2, b2
@@ -54,3 +55,14 @@ def updParam(w1, dw1, b1, db1, w2, dw2, b2, db2, lr):
     b2 -= lr * db2
     
     return w1, b1, w2, b2
+
+def saveParam(w1, b1, w2, b2):
+    np.savez("dataset/parameters.npz", w1=w1, b1=b1, w2=w2, b2=b2)
+
+def loadParam():
+    if os.path.exists("dataset/parameters.npz"):
+        data = np.load("dataset/parameters.npz")
+        
+        return data['w1'], data['b1'], data['w2'], data['b2']
+    
+    return None
