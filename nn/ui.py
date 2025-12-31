@@ -69,6 +69,24 @@ class DigitUI:
             font=("Segoe UI", 11), padx=14, pady=6
         ).pack(side=tk.LEFT, padx=6)
 
+        tk.Button(
+            btn, text="Correct Guess", command=self.markCorrect,
+            bg="#22c55e", fg="white", relief="flat",
+            font=("Segoe UI", 11), padx=14, pady=6
+        ).pack(side=tk.LEFT, padx=6)
+
+        tk.Button(
+            btn, text="Wrong Guess", command=self.markWrong,
+            bg="#f59e0b", fg="white", relief="flat",
+            font=("Segoe UI", 11), padx=14, pady=6
+        ).pack(side=tk.LEFT, padx=6)
+
+        self.status = tk.Label(
+            self.root, text="", font=("Segoe UI", 11),
+            fg="#16a34a", bg=BG
+        )
+        self.status.grid(row=3, column=0, columnspan=2, pady=(0, 8))
+
         self.img = Image.new("L", (GRID, GRID), 0)
 
         self.canvas.bind("<B1-Motion>", self.paint)
@@ -91,23 +109,23 @@ class DigitUI:
     def initBar(self):
         self.bars = []
         self.texts = []
-        
+
         for i in range(10):
             y = 25 + i * 25
-            
+
             self.bar_canvas.create_text(
                 10, y, text=str(i), anchor="w",
                 font=("Segoe UI", 10), fill=SUBTEXT
             )
-            
+
             bar = self.bar_canvas.create_rectangle(
-                35, y-7, 35, y+7, fill=SOFT, outline=""
+                35, y - 7, 35, y + 7, fill=SOFT, outline=""
             )
             txt = self.bar_canvas.create_text(
                 290, y, text="0.0%", anchor="e",
                 font=("Segoe UI", 10), fill=SUBTEXT
             )
-            
+
             self.bars.append(bar)
             self.texts.append(txt)
 
@@ -146,8 +164,8 @@ class DigitUI:
                     r = g = b = v
 
                 self.canvas.create_rectangle(
-                    x*SCALE, y*SCALE,
-                    (x+1)*SCALE, (y+1)*SCALE,
+                    x * SCALE, y * SCALE,
+                    (x + 1) * SCALE, (y + 1) * SCALE,
                     fill=f"#{r:02x}{g:02x}{b:02x}",
                     outline=""
                 )
@@ -163,7 +181,7 @@ class DigitUI:
 
         x0, x1 = xs.min(), xs.max()
         y0, y1 = ys.min(), ys.max()
-        digit = arr[y0:y1+1, x0:x1+1]
+        digit = arr[y0:y1 + 1, x0:x1 + 1]
 
         h, w = digit.shape
         scale = 20 / max(h, w)
@@ -175,7 +193,7 @@ class DigitUI:
         canvas = np.zeros((28, 28))
         yoff = (28 - nh) // 2
         xoff = (28 - nw) // 2
-        canvas[yoff:yoff+nh, xoff:xoff+nw] = digit
+        canvas[yoff:yoff + nh, xoff:xoff + nw] = digit
 
         cy, cx = np.argwhere(canvas > 0).mean(axis=0)
         canvas = np.roll(canvas, int(14 - cy), axis=0)
@@ -183,34 +201,17 @@ class DigitUI:
 
         return (canvas / 255).reshape(784, 1)
 
-    def animBar(self, bar, y, start, end, color):
-        steps = 6
-        for i in range(steps):
-            t = (i + 1) / steps
-            t = 1 - (1 - t) ** 2
-            w = start + (end - start) * t
-            
-            self.bar_canvas.after(
-                i * 15,
-                lambda w=w, c=color: (
-                    self.bar_canvas.coords(bar, 35, y-7, 35 + w, y+7),
-                    self.bar_canvas.itemconfig(bar, fill=c)
-                )
-            )
-
-    def pulseBar(self, bar):
-        for i in range(2):
-            self.bar_canvas.after(i * 120, lambda: self.bar_canvas.itemconfig(bar, width=3))
-            self.bar_canvas.after(i * 120 + 60, lambda: self.bar_canvas.itemconfig(bar, width=1))
-
     def predict(self):
         x = self.preprocess()
         _, _, _, a2 = forwProp(self.w1, self.b1, self.w2, self.b2, x)
         probs = a2.flatten()
         pred = np.argmax(probs)
 
+        self.last_pred = pred
+        self.last_input = x
+
         self.label.config(
-            text=f"Prediction: {pred} ({probs[pred]*100:.2f}%)"
+            text=f"Prediction: {pred} ({probs[pred] * 100:.2f}%)"
         )
 
         for i in range(10):
@@ -220,20 +221,61 @@ class DigitUI:
             current = x1 - x0
             color = ACCENT if i == pred else SOFT
 
-            self.animBar(self.bars[i], y, current, target, color)
+            self.bar_canvas.coords(
+                self.bars[i], 35, y - 7, 35 + target, y + 7
+            )
+            self.bar_canvas.itemconfig(self.bars[i], fill=color)
             self.bar_canvas.itemconfig(
-                self.texts[i], text=f"{probs[i]*100:.1f}%"
+                self.texts[i], text=f"{probs[i] * 100:.1f}%"
             )
 
-        self.pulseBar(self.bars[pred])
+    def saveSample(self, label):
+        arr = self.preprocess().reshape(784)
+        arr = (arr * 255).astype(int)
+        row = np.insert(arr, 0, label)
+
+        with open("dataset/data.csv", "a") as f:
+            f.write("\n" + ",".join(map(str, row)))
+
+    def showThanks(self):
+        self.status.config(text="Thank you, sample added!")
+        self.root.after(1500, lambda: self.status.config(text=""))
+
+    def markCorrect(self):
+        if not hasattr(self, "last_pred"):
+            return
+        
+        self.saveSample(self.last_pred)
+        self.showThanks()
+        self.clear()
+
+    def markWrong(self):
+        if not hasattr(self, "last_pred"):
+            return
+
+        top = tk.Toplevel(self.root)
+        top.title("Correct Digit")
+
+        tk.Label(top, text="Enter correct digit (0–9):").pack(padx=10, pady=6)
+        entry = tk.Entry(top)
+        entry.pack(padx=10)
+
+        def submit():
+            val = entry.get()
+            if val.isdigit() and 0 <= int(val) <= 9:
+                self.saveSample(int(val))
+                self.showThanks()
+                top.destroy()
+                self.clear()
+
+        tk.Button(top, text="Submit", command=submit).pack(pady=8)
 
     def clear(self):
         self.canvas.delete("all")
         self.img = Image.new("L", (GRID, GRID), 0)
         self.label.config(text="Prediction: —")
-        
+
         for i in range(10):
             y = 25 + i * 25
-            
-            self.bar_canvas.coords(self.bars[i], 35, y-7, 35, y+7)
+            self.bar_canvas.coords(self.bars[i], 35, y - 7, 35, y + 7)
             self.bar_canvas.itemconfig(self.texts[i], text="0.0%")
